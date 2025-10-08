@@ -1,157 +1,164 @@
-<#
-System Performance Monitor - Logs CPU and Memory usage to CSV
-=====================================================================================
-This script monitors system performance metrics (CPU speed, CPU usage, Memory Usage)
-and logs them to a CSV file with basic formatting and error handling. Automatically
-creates new files with incrementing number if the target file already exists.
+# Optimized Advanced System Monitor
+# Run as Administrator for accurate metrics
 
-#>
+[CmdletBinding()]
+Param()
 
-# Function to get unique filename
+# Function to get unique filename (simplified)
 function Get-UniqueFilename {
     param([string]$BaseName)
     
+    $basePath = if ($BaseName -like "*.csv") { $BaseName -replace '\.csv$', '' } else { $BaseName }
     $counter = 1
-    $basePath = $BaseName
+    $filePath = "$basePath.csv"
     
-    # Check if base filename exists
-    if (Test-Path "$basePath.csv") {
-        # Extract base name
-        if ($BaseName -like "*.csv") {
-            $basePath = $BaseName -replace '\.csv$', ''
-        }
-        
-        # Find the next filename number
-        while (Test-Path "${basePath}_$counter.csv") {
-            $counter++
-        }
-        return "${basePath}_$counter.csv"
-    } else {
-        # If base doesn't exist
-        if ($BaseName -like "*.csv") {
-            return $BaseName
-        } else {
-            return "$BaseName.csv"
-        }
+    while (Test-Path $filePath) {
+        $filePath = "$basePath`_$counter.csv"
+        $counter++
     }
+    return $filePath
 }
 
-# Get !unique! log filename
-$BaseLogName = "system_performance_log"
-$LogFile = Get-UniqueFilename -BaseName $BaseLogName
+# Configuration
+$durationSeconds = 600  # 10 minutes
+$intervalSeconds = 5
+$iterations = $durationSeconds / $intervalSeconds
+$baseLogName = "system_performance_log"
+$logFile = Get-UniqueFilename -BaseName $baseLogName
 
-# Write CSV header
-"Time,CPUSpeed(MHz),CPUUsage(%),MemoryUsage(%)" | Out-File $LogFile -Encoding UTF8
+# Initialize log
+"Time,CPUSpeed(MHz),CPUUsage(%),MemoryUsage(%)" | Out-File -FilePath $logFile -Encoding utf8
 
 Write-Host "System Performance Monitoring started..." -ForegroundColor Green
 Write-Host "Monitoring for 10 minutes (5-second intervals)..." -ForegroundColor Yellow
-Write-Host "Log file: $LogFile" -ForegroundColor Green
-Write-Host "!!YOU CAN STOP ANYTIME BY PRESSING-AND-HOLDING DOWN CTR+C!!" -ForegroundColor Yellow
+Write-Host "Log file: $logFile" -ForegroundColor Green
+Write-Host "!!YOU CAN STOP ANYTIME BY PRESSING-AND-HOLDING DOWN CTRL+C!!" -ForegroundColor Yellow
+
+# Get nominal frequency (base clock from WMI/CIM, used for scaling)
+$nominalFreq = "N/A"
+try {
+    $nominalFreq = (Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1).MaxClockSpeed
+} catch {
+    Write-Warning "Could not retrieve nominal CPU frequency: $_"
+}
+
+# Data collection array for batch write
+$dataLines = New-Object System.Collections.ArrayList
+
+# Stopwatch for precise timing
+$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 try {
-    for ($i = 0; $i -lt 120; $i++) {
+    for ($i = 1; $i -le $iterations; $i++) {
         $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         
-        # Get CPU Speed
-        $cpuSpeed = "N/A"
-        try {
-            $cpuSpeedRaw = (Get-WmiObject -Class Win32_Processor | Select-Object -First 1).CurrentClockSpeed
-            if ($cpuSpeedRaw -and $cpuSpeedRaw -gt 0) {
-                $cpuSpeed = $cpuSpeedRaw
+        # CPU Frequency (MHz) - Dynamic via % Processor Performance (handles turbo)
+        $cpuFreq = "N/A"
+        if ($nominalFreq -ne "N/A") {
+            try {
+                $perfSamples = Get-Counter '\Processor Information(_Total)\% Processor Performance' -ErrorAction Stop
+                $perf = if ($perfSamples.CounterSamples) { $perfSamples.CounterSamples.CookedValue } else { $null }
+                $cpuFreq = if ($perf -ne $null) { [math]::Round($nominalFreq * ($perf / 100), 0) } else { "N/A" }
+            } catch {
+                Write-Warning "Could not retrieve CPU performance: $_"
             }
-        } catch {
-            Write-Warning "Could not retrieve CPU speed: $($_.Exception.Message)"
         }
         
-        # Get CPU Usage
+        # CPU Usage (%)
         $cpuUsage = "N/A"
         try {
-            $cpuUsageRaw = (Get-WmiObject Win32_Processor).LoadPercentage
-            if ($cpuUsageRaw -ge 0 -and $cpuUsageRaw -le 100) {
-                $cpuUsage = $cpuUsageRaw
-            }
+            $usageSamples = Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop
+            $cpuUsage = if ($usageSamples.CounterSamples) {
+                [math]::Round($usageSamples.CounterSamples.CookedValue, 2)
+            } else { "N/A" }
         } catch {
-            Write-Warning "Could not retrieve CPU usage: $($_.Exception.Message)"
+            Write-Warning "Could not retrieve CPU usage: $_"
         }
         
-        # Get Memory Usage
+        # Memory Usage (%)
         $memUsage = "N/A"
         try {
-            $memory = Get-WmiObject Win32_OperatingSystem
-            if ($memory.TotalVisibleMemorySize -gt 0) {
-                $usedMemory = $memory.TotalVisibleMemorySize - $memory.FreePhysicalMemory
-                $memUsage = [math]::Round(($usedMemory / $memory.TotalVisibleMemorySize) * 100, 2)
+            $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+            if ($os.TotalVisibleMemorySize -gt 0) {
+                $memUsage = [math]::Round(100 * (1 - ($os.FreePhysicalMemory / $os.TotalVisibleMemorySize)), 2)
             }
         } catch {
-            Write-Warning "Could not retrieve memory usage: $($_.Exception.Message)"
+            Write-Warning "Could not retrieve memory usage: $_"
         }
         
-        # Create CSV row
-        $csvRow = "$time,$cpuSpeed,$cpuUsage,$memUsage"
+        $line = "$time,$cpuFreq,$cpuUsage,$memUsage"
+        [void]$dataLines.Add($line)
         
-        # Write on CSV
-        $csvRow | Out-File $LogFile -Append -Encoding UTF8
+        # Display progress with padded sample number
+        $sampleNumber = $i.ToString("D3")
+        Write-Host "Sample $sampleNumber - Time: $time - CPU: $cpuFreq MHz - Usage: $cpuUsage% - Memory: $memUsage%"
         
-        # Display progress with proper formatting (3-digit sample number)
-        $sampleNumber = ($i + 1).ToString().PadLeft(3, '0')
-        Write-Host "Sample $sampleNumber - Time: $time - CPU: $cpuSpeed MHz - Usage: $cpuUsage% - Memory: $memUsage%"
+        # Batch write every 10 samples
+        if ($i % 10 -eq 0 -or $i -eq $iterations) {
+            $dataLines | Out-File -FilePath $logFile -Append -Encoding utf8
+            $dataLines.Clear()
+        }
         
-        # Wait 5 seconds
-        Start-Sleep -Seconds 5
+        # Precise sleep
+        $elapsed = $stopwatch.Elapsed.TotalSeconds
+        $nextWake = $i * $intervalSeconds
+        if ($elapsed -lt $nextWake) {
+            Start-Sleep -Milliseconds (($nextWake - $elapsed) * 1000)
+        }
     }
 } catch {
-    Write-Error "Monitoring interrupted: $($_.Exception.Message)"
+    Write-Error "Monitoring interrupted: $_"
+} finally {
+    $stopwatch.Stop()
 }
 
 Write-Host "`nMonitoring completed!" -ForegroundColor Green
-Write-Host "Data saved to: $LogFile" -ForegroundColor Yellow
-Write-Host "Total samples collected: $i" -ForegroundColor Green
+Write-Host "Data saved to: $logFile" -ForegroundColor Yellow
+Write-Host "Total samples collected: $($i - 1)" -ForegroundColor Green  # Adjust for loop exit
 
-# Display summary
-if (Test-Path $LogFile) {
-    $data = Import-Csv $LogFile
+# Summary Statistics (excluding N/A per metric)
+if (Test-Path $logFile) {
+    $data = Import-Csv $logFile
     
-    # Filter out rows with N/A values and convert to numbers
-    $validCPUData = $data | Where-Object { $_.'CPUUsage(%)' -ne "N/A" } | ForEach-Object { 
-        [PSCustomObject]@{
-            CPUUsage = [double]$_.'CPUUsage(%)'
-            MemoryUsage = [double]$_.'MemoryUsage(%)'
-        }
-    }
+    $validCpuFreq = $data | Where-Object { $_.'CPUSpeed(MHz)' -ne "N/A" } | ForEach-Object { [double]$_.'CPUSpeed(MHz)' }
+    $validCpuUsage = $data | Where-Object { $_.'CPUUsage(%)' -ne "N/A" } | ForEach-Object { [double]$_.'CPUUsage(%)' }
+    $validMemUsage = $data | Where-Object { $_.'MemoryUsage(%)' -ne "N/A" } | ForEach-Object { [double]$_.'MemoryUsage(%)' }
     
-    $validMemoryData = $data | Where-Object { $_.'MemoryUsage(%)' -ne "N/A" } | ForEach-Object { 
-        [double]$_.'MemoryUsage(%)'
-    }
+    Write-Host "`nSummary Statistics:" -ForegroundColor Magenta
     
-    if ($validCPUData.Count -gt 0 -or $validMemoryData.Count -gt 0) {
-        Write-Host "`nSummary Statistics:" -ForegroundColor Magenta
-        
-        if ($validCPUData.Count -gt 0) {
-            $avgCPU = ($validCPUData | Measure-Object -Property CPUUsage -Average).Average
-            Write-Host "Average CPU Usage: $([math]::Round($avgCPU, 2))%" -ForegroundColor White
-        } else {
-            Write-Host "Average CPU Usage: No valid data" -ForegroundColor Yellow
-        }
-        
-        if ($validMemoryData.Count -gt 0) {
-            $avgMemory = ($validMemoryData | Measure-Object -Average).Average
-            Write-Host "Average Memory Usage: $([math]::Round($avgMemory, 2))%" -ForegroundColor White
-        } else {
-            Write-Host "Average Memory Usage: No valid data" -ForegroundColor Yellow
-        }
-        
-        Write-Host "Valid CPU samples: $($validCPUData.Count)/$($data.Count)" -ForegroundColor Gray
-        Write-Host "Valid Memory samples: $($validMemoryData.Count)/$($data.Count)" -ForegroundColor Gray
-        Write-Host "Monitoring duration: 10 minutes" -ForegroundColor White
+    if ($validCpuFreq.Count -gt 0) {
+        $cpuFreqStats = $validCpuFreq | Measure-Object -Average -Minimum -Maximum
+        Write-Host "CPU Frequency (MHz): Avg $([math]::Round($cpuFreqStats.Average, 2)), Min $([math]::Round($cpuFreqStats.Minimum, 2)), Max $([math]::Round($cpuFreqStats.Maximum, 2))"
     } else {
-        Write-Host "`nNo valid data collected for statistics." -ForegroundColor Red
+        Write-Host "CPU Frequency: No valid data" -ForegroundColor Yellow
     }
+    
+    if ($validCpuUsage.Count -gt 0) {
+        $cpuUsageStats = $validCpuUsage | Measure-Object -Average -Minimum -Maximum
+        Write-Host "CPU Usage (%): Avg $([math]::Round($cpuUsageStats.Average, 2)), Min $([math]::Round($cpuUsageStats.Minimum, 2)), Max $([math]::Round($cpuUsageStats.Maximum, 2))"
+    } else {
+        Write-Host "CPU Usage: No valid data" -ForegroundColor Yellow
+    }
+    
+    if ($validMemUsage.Count -gt 0) {
+        $memUsageStats = $validMemUsage | Measure-Object -Average -Minimum -Maximum
+        Write-Host "Memory Usage (%): Avg $([math]::Round($memUsageStats.Average, 2)), Min $([math]::Round($memUsageStats.Minimum, 2)), Max $([math]::Round($memUsageStats.Maximum, 2))"
+    } else {
+        Write-Host "Memory Usage: No valid data" -ForegroundColor Yellow
+    }
+    
+    Write-Host "Valid CPU Freq samples: $($validCpuFreq.Count)/$($data.Count)" -ForegroundColor Gray
+    Write-Host "Valid CPU Usage samples: $($validCpuUsage.Count)/$($data.Count)" -ForegroundColor Gray
+    Write-Host "Valid Memory samples: $($validMemUsage.Count)/$($data.Count)" -ForegroundColor Gray
+    Write-Host "Monitoring duration: 10 minutes" -ForegroundColor White
+} else {
+    Write-Host "`nNo log file found for statistics." -ForegroundColor Red
 }
 
 # Show nearby log files
 Write-Host "`nOther log files in this directory:" -ForegroundColor Gray
-Get-ChildItem -Path "." -Filter "${BaseLogName}*.csv" | ForEach-Object {
-    if ($_.Name -eq $LogFile) {
+Get-ChildItem -Path "." -Filter "$baseLogName*.csv" | ForEach-Object {
+    if ($_.Name -eq (Split-Path $logFile -Leaf)) {
         Write-Host "  > $($_.Name) (current)" -ForegroundColor Green
     } else {
         Write-Host "    $($_.Name)" -ForegroundColor DarkGray
