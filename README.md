@@ -10,6 +10,7 @@ A PowerShell script for monitoring system performance metrics including CPU spee
 - Logs data to CSV files with automatic filename incrementation
 - Simple output format
 - 10-minute monitoring duration (5-second intervals)
+<img width="639" height="259" alt="image" src="https://github.com/user-attachments/assets/96bd0cec-1c47-4ef1-8529-842eb9bde8bc" />
 
 ### 1.2 Better System Monitor (`better_system_monitor.ps1`)
 - **Advanced version** with enhanced features
@@ -19,26 +20,27 @@ A PowerShell script for monitoring system performance metrics including CPU spee
 - Shows data quality metrics
 - Same 10-minute monitoring duration
 - A lot more GUI
+<img width="621" height="310" alt="image" src="https://github.com/user-attachments/assets/c7b7c277-eba4-46a6-b1c4-cae21adc313f" />
 
 ## 2 Features
 
 ### 2.1 Common Features (Both Scripts)
-- ✅ Real-time system performance monitoring
-- ✅ CSV logging with automatic file management
-- ✅ CPU Speed (MHz) monitoring
-- ✅ CPU Usage (%) monitoring  
-- ✅ Memory Usage (%) monitoring
-- ✅ 5-second sampling intervals
-- ✅ 10-minute total monitoring duration
-- ✅ Summary statistics at completion
-- ✅ Safe interruption with Ctrl+C
+- Real-time system performance monitoring
+- CSV logging with automatic file management
+- CPU Speed (MHz) monitoring
+- CPU Usage (%) monitoring  
+- Memory Usage (%) monitoring
+- 5-second sampling intervals
+- 10-minute total monitoring duration
+- Summary statistics at completion
+- Safe interruption with Ctrl+C
 
 ### 2.2 Advanced Features (Better System Monitor Only)
-- ✅ Improved data validation
-- ✅ "N/A" value handling in statistics
-- ✅ Data quality reporting
-- ✅ Better output formatting
-- ✅ Sample number padding (001, 002, ..., 120)
+- Improved data validation
+- "N/A" value handling in statistics
+- Data quality reporting
+- Better output formatting
+- Sample number padding (001, 002, ..., 120)
 
 ## ️ 3 Installation & Usage
 
