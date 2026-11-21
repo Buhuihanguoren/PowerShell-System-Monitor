@@ -1,67 +1,39 @@
 # System Performance Monitor
 
-A PowerShell script for monitoring system performance metrics including CPU speed, CPU usage, and memory usage.
+Two PowerShell scripts that log CPU speed, CPU usage and memory usage to a CSV file every 5 seconds for 10 minutes, then print summary statistics.
 
-## 1. Overall
+| Script | What it adds |
+|---|---|
+| `system_monitor.ps1` | The basic version: sampling, CSV logging, summary |
+| `better_system_monitor.ps1` | Checks every sample, handles missing values ("N/A") in the statistics, reports data quality, and formats the output more clearly |
 
-### 1.1 System Monitor (`system_monitor.ps1`)
-- **Basic version** with essential functionality
-- Monitors CPU speed, CPU usage, and memory usage
-- Logs data to CSV files with automatic filename incrementation
-- Simple output format
-- 10-minute monitoring duration (5-second intervals)
-<img width="639" height="259" alt="image" src="https://github.com/user-attachments/assets/96bd0cec-1c47-4ef1-8529-842eb9bde8bc" />
+Basic version:
 
-### 1.2 Better System Monitor (`better_system_monitor.ps1`)
-- **Advanced version** with enhanced features
-- Improved error handling for data validation
-- Better formatting with 3-digit sample numbers
-- Handles "N/A" values in statistics calculation
-- Shows data quality metrics
-- Same 10-minute monitoring duration
-- A lot more GUI
-<img width="621" height="310" alt="image" src="https://github.com/user-attachments/assets/c7b7c277-eba4-46a6-b1c4-cae21adc313f" />
+<img width="639" height="259" alt="Basic monitor output" src="https://github.com/user-attachments/assets/96bd0cec-1c47-4ef1-8529-842eb9bde8bc" />
 
-## 2 Features
+Better version:
 
-### 2.1 Common Features (Both Scripts)
-- Real-time system performance monitoring
-- CSV logging with automatic file management
-- CPU Speed (MHz) monitoring
-- CPU Usage (%) monitoring  
-- Memory Usage (%) monitoring
-- 5-second sampling intervals
-- 10-minute total monitoring duration
-- Summary statistics at completion
-- Safe interruption with Ctrl+C
+<img width="621" height="310" alt="Better monitor output" src="https://github.com/user-attachments/assets/c7b7c277-eba4-46a6-b1c4-cae21adc313f" />
 
-### 2.2 Advanced Features (Better System Monitor Only)
-- Improved data validation
-- "N/A" value handling in statistics
-- Data quality reporting
-- Better output formatting
-- Sample number padding (001, 002, ..., 120)
+## What it records
 
-## ️ 3 Installation & Usage
+- CPU speed (MHz), CPU usage (%) and memory usage (%), one sample every 5 seconds
+- 120 samples (10 minutes) per run, numbered 001 to 120 in the better version
+- A new CSV file for each run (the file name number goes up, nothing is overwritten)
+- Summary statistics at the end; stop early with Ctrl+C
 
-### 3.1 Prerequisites
-- Windows PowerShell 5.1 or newer
-- Administrator privileges (recommended)
-- Windows Management Instrumentation (WMI) enabled
+## Run it
 
-### 3.2 Running the Scripts
+```powershell
+cd path\to\PowerShell-System-Monitor
+.\system_monitor.ps1           # basic version
+.\better_system_monitor.ps1    # better version
+```
 
-1. **Download the scripts** to your preferred directory (Or create a file with the same name and extension "ps1" and just copy paste the code)
-2. **Open PowerShell as Administrator**
-3. **Navigate to the scripts folder**:
-   ```powershell
-   cd path\to\SystemPerformanceMonitor\scripts .\(Write File_Name here)
-   
-# Run basic version
-.\system_monitor.ps1
+If PowerShell refuses to run scripts:
 
-# Run advanced version  
-.\better_system_monitor.ps1
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
 
-If you encounter execution policy errors, run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-!!! For accurate results, ensure no other resource-intensive applications are running during monitoring. !!!
+Needs Windows PowerShell 5.1 or newer with WMI. Running as Administrator is recommended. Close other heavy programs first, or they will show up in the numbers.
